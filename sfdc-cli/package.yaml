@@ -21,6 +21,15 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- http-conduit
+- bytestring
+- HaXml
+- network-uri
+- tagsoup
+- fast-tagsoup
+- regex-posix
+- uri-encode
+- aeson
 
 library:
   source-dirs: src
@@ -35,15 +44,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - sfdc-cli
-    - http-conduit
-    - bytestring
-    - HaXml
-    - network-uri
-    - tagsoup
-    - fast-tagsoup
-    - regex-posix
-    - uri-encode
-    - aeson
 tests:
   sfdc-cli-test:
     main:                Spec.hs

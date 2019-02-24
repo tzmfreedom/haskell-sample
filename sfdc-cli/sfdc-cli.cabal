@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b7a9e03eb35e4ea9fdf594934f34847ed25d368ae276748817b36413af076ea8
+-- hash: ea1e54f8a0d2c8c2511da64a2907e7ab090403ed89f52d9c70f5eb06a8bfb814
 
 name:           sfdc-cli
 version:        0.1.0.0
@@ -26,12 +26,25 @@ source-repository head
   location: https://github.com/githubuser/sfdc-cli
 
 library
+  exposed-modules:
+      Network.Salesforce.Auth
+      Network.Salesforce.Core
+      Network.Salesforce.Query
   other-modules:
       Paths_sfdc_cli
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      HaXml
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , fast-tagsoup
+    , http-conduit
+    , network-uri
+    , regex-posix
+    , tagsoup
+    , uri-encode
   default-language: Haskell2010
 
 executable sfdc-cli-exe
@@ -64,6 +77,15 @@ test-suite sfdc-cli-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      HaXml
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , fast-tagsoup
+    , http-conduit
+    , network-uri
+    , regex-posix
     , sfdc-cli
+    , tagsoup
+    , uri-encode
   default-language: Haskell2010
