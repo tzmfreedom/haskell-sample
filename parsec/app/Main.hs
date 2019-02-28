@@ -48,16 +48,16 @@ matchInt = do
 intObject :: Parser JsonValue
 intObject = JsonInt <$> matchInt
 
-matchFloat:: Parser Float
+matchFloat :: Parser Float
 matchFloat = do
   head <- oneOf ['1'..'9']
   tail <- many digit
   char '.'
   frac <- many digit
   spaces
-  return (read (head:tail ++ '.':frac) :: Float)
+  return (read (if length frac == 0 then head:tail else (head:tail ++ '.':frac)) :: Float)
 
-floatObject:: Parser JsonValue
+floatObject :: Parser JsonValue
 floatObject = JsonFloat <$> matchFloat
 
 matchArray :: Parser [JsonValue]
@@ -81,7 +81,7 @@ jsonObject :: Parser JsonValue
 jsonObject = JsonObject <$> matchObject
 
 parseValue :: Parser JsonValue
-parseValue = boolObject <|> stringObject <|> intObject <|> floatObject <|> arrayObject <|> jsonObject
+parseValue = boolObject <|> stringObject <|> try floatObject <|> intObject <|> arrayObject <|> jsonObject
 
 parse :: String -> JsonValue
 parse str =
