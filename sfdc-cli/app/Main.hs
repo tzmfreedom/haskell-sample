@@ -1,62 +1,49 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Main where
 
 import System.Environment (getArgs, getEnv)
 import System.IO
-import Network.Salesforce.Core
-import Network.Salesforce.Auth as Auth
-import Network.Salesforce.Query as Query
 import Data.Aeson as JSON
 import Data.Proxy
+import Data.Maybe
+import HSForce
 
 data Account = Account{
-  sfid :: String,
-  name :: String
+  accId :: Maybe String,
+  accName :: Maybe String,
+  accEx :: Maybe String
 } deriving Show
+
+instance SObject Account where
+  typeName a = "Account"
+  getSfid = fromJust . accId
 
 instance FromJSON Account where
-  parseJSON (Object v) = Account
-    <$> (v .: "Id")
-    <*> (v .: "Name")
+  parseJSON = withObject "Account" $ \v -> do
+    accId <- v .:? "Id"
+    accName <- v .:? "Name"
+    accEx <- v .:? "Ex__c"
+    return Account{..}
 
-data Contact = Contact{
-  sfid' :: String,
-  lastname :: String,
-  firstname :: String
-} deriving Show
-
-instance FromJSON Contact where
-  parseJSON = withObject "Contact" $ \v -> do
-    sfid' <- (v .: "Id")
-    lastname <- (v .: "LastName")
-    firstname <- (v .: "FirstName")
-    return Contact{..}
+instance ToJSON Account where
+  toJSON (Account{accName}) =
+    object ["Name" .= accName]
 
 main :: IO ()
 main = do
-  args <- getArgs
-  case args !! 0 of
-    "login" -> do
-      loginResult <- Main.login
-      print loginResult
-    "query" -> do
-      loginResult <- Main.login
-      let query = args !! 1
-      queryResult <- Query.query loginResult query (Proxy :: Proxy Contact)
-      mapM print $ records queryResult
-      return ()
-    _ -> return ()
-
-login :: IO LoginResult
-login = do
-  username <- getEnv "SALESFORCE_USERNAME"
-  password <- getEnv "SALESFORCE_PASSWORD"
-  Auth.login LoginRequest{
-    username=username,
-    password=password,
-    endpoint="login.salesforce.com",
-    apiVersion="44.0"
-  }
-
+  loginRequest <- defaultLoginRequest
+  client <- login loginRequest
+  print $ clientAccessToken client
+  let client' = client { clientDebug = True}
+--  insert client Account{name="hogehoge"}
+--  update client Account{sfid="0016F00003AfgQHQAZ", name="foobar"}
+--  upsert client' Account{sfid=Nothing, name = Just "foobar", ex = Just "aaa"} "Ex__c" "aaa"
+--  print =<< query client' "SELECT Id, Name FROM Account WHERE Name = 'foobar'" (Proxy :: Proxy Account)
+--  print =<< HSForce.describe client' "Account" (Proxy :: Proxy Account)
+--  print =<< HSForce.describeGlobal client'
+--  print =<< queryAll client' "SELECT Id, Name FROM Account WHERE Name = 'foobar'" (Proxy :: Proxy Account)
+  print =<< versions client'
+  print =<< recordCount client' ["Account", "Contact", "Opportunity"]
