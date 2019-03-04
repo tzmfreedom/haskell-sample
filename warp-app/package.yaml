@@ -26,6 +26,9 @@ dependencies:
 - http-types
 - bytestring
 - containers
+- split
+- utf8-string
+- mtl
 
 library:
   source-dirs: src
