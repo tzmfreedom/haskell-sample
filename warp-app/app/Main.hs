@@ -17,57 +17,103 @@ import Codec.Binary.UTF8.String as CBS
 import Control.Monad
 import Control.Monad.Trans
 import Control.Applicative
+import Text.Parsec as TP
+import Text.Parsec.String
+import Text.Parsec.Char
+
+type Handler = Request -> IORef DB -> IO Response
+
+type DB = M.Map String Task
+
+data Task = Task {
+  title :: String,
+  description :: String
+} deriving Show
 
 main :: IO ()
 main = do
   tasks <- defaultTasks
   run 8080 (server tasks)
 
-defaultTasks :: IO (IORef [String])
-defaultTasks = newIORef ["foo", "bar", "baz"]
+defaultTasks :: IO (IORef DB)
+defaultTasks = newIORef $ fromList [("1", Task{title="foo", description="bar"}), ("2", Task{title="hoge", description="fuga"})]
 
-server :: IORef [String] -> Application
+server :: IORef DB -> Application
 server tasks req respond = do
-  let path = rawPathInfo req
-      paths = splitOn "/" (CBS.decode . BS.unpack $ BS.drop 1 path)
-      handler = getHandler paths
-  respond =<< handler req tasks
+  let handler = getHandler req
+  respond =<< handler tasks
 
-getHandler :: [String] -> Request -> IORef [String] -> IO Response
-getHandler (path:rest) = case path of
-       ""         -> showIndex
-       "hello"    -> showHoi
-       "add"      -> addTask
-       "delete"   -> deleteTask
-       _        -> notFound
+getHandler :: Handler
+getHandler req = case parse (parseRoute req) "" (CBS.decode $ BS.unpack path) of
+  Left err -> error $ "ParserError"
+  Right ls -> ls req
+  where path = rawPathInfo req
 
 notFound :: Request -> IORef a -> IO Response
 notFound _ _ = return $ responseLBS status404 [] "Not Found"
 
-showIndex :: Request -> IORef a -> IO Response
-showIndex _ _ = return $ responseFile status200 [] "./index1.html" Nothing
+root :: Request -> IORef a -> IO Response
+root _ _ = return $ responseFile status200 [] "./index1.html" Nothing
 
-showHoi :: Request -> IORef a -> IO Response
-showHoi _ _ = return $ responseLBS status200 [] (toLazyByteString $ stringUtf8 "ほい！\n")
+--showHoi :: Request -> IORef a -> IO Response
+--showHoi _ _ = return $ responseLBS status200 [] (toLazyByteString $ stringUtf8 "ほい！\n")
 
-addTask :: Request -> IORef [String] -> IO Response
+parseRoute :: Request -> Parser Handler
+parseRoute req = (try $ parseTop req) TP.<|> (try $ parseTask req)
+
+parseTop :: Request -> Parser Handler
+parseTop req = do
+  string "/"
+  eof
+  return (case requestMethod req of
+    "GET" -> root
+    _ -> notFound)
+
+parseTask :: Request -> Parser Handler
+parseTask req = do
+  let method = requestMethod req
+  string "/posts"
+  eof *> return (case method of
+    "GET" -> indexTask
+    "POST" -> addTask
+    _ -> notFound) TP.<|> do
+    char '/'
+    postId <- TP.many1 digit
+    return (case method of
+        "GET" -> showTask postId
+        "PATCH" -> updateTask postId
+        "DELETE" -> deleteTask postId
+        _ -> notFound
+      )
+
+indexTask :: Handler
+indexTask req ref = do
+  db <- readIORef ref
+  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "index")
+
+showTask :: String -> Handler
+showTask taskId req ref = do
+  db <- readIORef ref
+  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "show" ++ taskId)
+
+addTask :: Request -> IORef DB -> IO Response
 addTask req ref = do
-  let kv = (queryString req !! 0)
-      key = fst kv
-      value = snd kv
-  tasks <- readIORef ref
-  let newTask = key `BS.append` "=" `BS.append` (fromJust value)
-      newTasks = (CBS.decode $ BS.unpack newTask):tasks
-  writeIORef ref newTasks
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show newTasks)
+--  let kv = (queryString req !! 0)
+--      key = fst kv
+--      value = snd kv
+  db <- readIORef ref
+  writeIORef ref db
+  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "add")
 --  return (responseLBS status200 [] $ fromStrict $ key `BS.append` "=" `BS.append` (fromJust value) `BS.append` "\n")
 
-deleteTask :: Request -> IORef [String] -> IO Response
-deleteTask req ref = do
-  tasks <- readIORef ref
-  writeIORef ref (L.drop 1 tasks)
-  tasks' <- readIORef ref
-  let kv = (queryString req !! 0)
-      key = fst kv
-      value = snd kv
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show tasks')
+updateTask :: String -> Request -> IORef DB -> IO Response
+updateTask taskId req ref = do
+  db <- readIORef ref
+  writeIORef ref db
+  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "update")
+
+deleteTask :: String -> Request -> IORef DB -> IO Response
+deleteTask taskId req ref = do
+  db <- readIORef ref
+  writeIORef ref db
+  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "delete")

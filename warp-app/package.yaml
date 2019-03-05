@@ -29,6 +29,7 @@ dependencies:
 - split
 - utf8-string
 - mtl
+- parsec
 
 library:
   source-dirs: src
