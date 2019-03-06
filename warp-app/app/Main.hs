@@ -8,7 +8,7 @@ import Network.HTTP.Types
 import Data.ByteString as BS
 import Data.ByteString.Lazy as BSL
 import Data.ByteString.Builder
-import Data.Map as M
+import Data.Map.Strict as M
 import Data.Maybe
 import Data.IORef
 import Data.List as L
@@ -23,11 +23,14 @@ import Text.Parsec.Char
 
 type Handler = Request -> IORef DB -> IO Response
 
-type DB = M.Map String Task
+data DB = DB{
+  dbRecords :: M.Map Int Task,
+  dbNextTaskId :: Int
+} deriving Show
 
 data Task = Task {
-  title :: String,
-  description :: String
+  taskTitle:: String,
+  taskDescription :: String
 } deriving Show
 
 main :: IO ()
@@ -36,7 +39,13 @@ main = do
   run 8080 (server tasks)
 
 defaultTasks :: IO (IORef DB)
-defaultTasks = newIORef $ fromList [("1", Task{title="foo", description="bar"}), ("2", Task{title="hoge", description="fuga"})]
+defaultTasks = newIORef $ DB{
+  dbRecords = fromList [
+    (1, Task{taskTitle="foo", taskDescription="bar"}),
+    (2, Task{taskTitle="hoge", taskDescription="fuga"})
+  ],
+  dbNextTaskId = 3
+  }
 
 server :: IORef DB -> Application
 server tasks req respond = do
@@ -79,10 +88,11 @@ parseTask req = do
     _ -> notFound) TP.<|> do
     char '/'
     postId <- TP.many1 digit
+    let postId' = read postId :: Int
     return (case method of
-        "GET" -> showTask postId
-        "PATCH" -> updateTask postId
-        "DELETE" -> deleteTask postId
+        "GET" -> showTask postId'
+        "PATCH" -> updateTask postId'
+        "DELETE" -> deleteTask postId'
         _ -> notFound
       )
 
@@ -91,29 +101,83 @@ indexTask req ref = do
   db <- readIORef ref
   return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "index")
 
-showTask :: String -> Handler
+showTask :: Int -> Handler
 showTask taskId req ref = do
   db <- readIORef ref
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "show" ++ taskId)
+  let task = M.lookup taskId (dbRecords db)
+  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show task)
 
 addTask :: Request -> IORef DB -> IO Response
 addTask req ref = do
---  let kv = (queryString req !! 0)
---      key = fst kv
---      value = snd kv
   db <- readIORef ref
-  writeIORef ref db
+  writeIORef ref $ dbAddTask req db
   return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "add")
 --  return (responseLBS status200 [] $ fromStrict $ key `BS.append` "=" `BS.append` (fromJust value) `BS.append` "\n")
 
-updateTask :: String -> Request -> IORef DB -> IO Response
+updateTask :: Int -> Request -> IORef DB -> IO Response
 updateTask taskId req ref = do
   db <- readIORef ref
-  writeIORef ref db
+  writeIORef ref $ dbUpdateTask taskId req db
   return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "update")
 
-deleteTask :: String -> Request -> IORef DB -> IO Response
+deleteTask :: Int -> Request -> IORef DB -> IO Response
 deleteTask taskId req ref = do
   db <- readIORef ref
-  writeIORef ref db
+  writeIORef ref $ dbDeleteTask taskId db
   return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "delete")
+
+dbAddTask :: Request -> DB -> DB
+dbAddTask req db = do
+  DB{
+    dbRecords = M.insert (dbNextTaskId db) newTask (dbRecords db),
+    dbNextTaskId = dbNextTaskId db + 1
+  } where
+    reqTask = buildTask req
+    newTask = Task{
+      taskTitle = taskTitle reqTask,
+      taskDescription = taskDescription reqTask
+    }
+
+dbUpdateTask :: Int -> Request -> DB -> DB
+dbUpdateTask taskId req db = do
+  case M.lookup taskId (dbRecords db) of
+    Nothing -> error "Nothing"
+    Just task -> db{
+      dbRecords = M.insert taskId (foldTask req task) (dbRecords db)
+    }
+
+dbDeleteTask :: Int -> DB -> DB
+dbDeleteTask taskId db = do
+  db{
+    dbRecords = M.delete taskId $ dbRecords db
+  }
+
+buildTask :: Request -> Task
+buildTask req = do
+  Task{
+    taskTitle = decodeParameter $ fromJust title,
+    taskDescription = decodeParameter $ fromJust desc
+  } where
+    q = queryString req
+    title = L.lookup "title" q
+    desc = L.lookup "desc" q
+
+
+foldTask :: Request -> Task -> Task
+foldTask req task = do
+  task'' where
+    q = queryString req
+    title = L.lookup "title" q
+    desc = L.lookup "desc" q
+    task' = if isNothing title then task else task{taskTitle = decodeParameter $ fromJust title}
+    task'' = if isNothing title then task' else task'{taskDescription = decodeParameter $ fromJust desc}
+
+decodeParameter :: Maybe BS.ByteString -> String
+decodeParameter bs = do
+  ret bs where
+    ret (Just a) = bs2str a
+    ret Nothing = ""
+
+bs2str :: BS.ByteString -> String
+bs2str str = do
+  CBS.decode $ BS.unpack str
