@@ -41,11 +41,11 @@ data Task = Task {
 
 main :: IO ()
 main = do
-  tasks <- defaultTasks
-  run 8080 (server tasks)
+  ref <- initDBRef
+  run 8080 (server ref)
 
-defaultTasks :: IO (IORef DB)
-defaultTasks = newIORef $ DB{
+initDBRef :: IO (IORef DB)
+initDBRef = newIORef $ DB{
   dbRecords = fromList [
     (1, Task{taskId = 1, taskTitle="foo", taskDescription="bar"}),
     (2, Task{taskId = 2, taskTitle="hoge", taskDescription="fuga"})
@@ -54,9 +54,9 @@ defaultTasks = newIORef $ DB{
   }
 
 server :: IORef DB -> Application
-server tasks req respond = do
+server ref req respond = do
   let handler = getHandler req
-  respond =<< handler tasks
+  respond =<< handler ref
 
 getHandler :: Handler
 getHandler req = case parse (parseRoute req) "" (CBS.decode $ BS.unpack path) of
