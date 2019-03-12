@@ -30,6 +30,8 @@ dependencies:
 - utf8-string
 - mtl
 - parsec
+- aeson
+- template-haskell
 
 library:
   source-dirs: src

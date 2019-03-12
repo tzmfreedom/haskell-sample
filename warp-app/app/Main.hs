@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
@@ -8,11 +10,14 @@ import Network.HTTP.Types
 import Data.ByteString as BS
 import Data.ByteString.Lazy as BSL
 import Data.ByteString.Builder
+import Data.Char
 import Data.Map.Strict as M
 import Data.Maybe
 import Data.IORef
 import Data.List as L
 import Data.List.Split
+import Data.Aeson as JSON
+import Data.Aeson.TH (deriveJSON, defaultOptions, Options(..))
 import Codec.Binary.UTF8.String as CBS
 import Control.Monad
 import Control.Monad.Trans
@@ -29,6 +34,7 @@ data DB = DB{
 } deriving Show
 
 data Task = Task {
+  taskId :: Int,
   taskTitle:: String,
   taskDescription :: String
 } deriving Show
@@ -41,8 +47,8 @@ main = do
 defaultTasks :: IO (IORef DB)
 defaultTasks = newIORef $ DB{
   dbRecords = fromList [
-    (1, Task{taskTitle="foo", taskDescription="bar"}),
-    (2, Task{taskTitle="hoge", taskDescription="fuga"})
+    (1, Task{taskId = 1, taskTitle="foo", taskDescription="bar"}),
+    (2, Task{taskId = 2, taskTitle="hoge", taskDescription="fuga"})
   ],
   dbNextTaskId = 3
   }
@@ -58,8 +64,11 @@ getHandler req = case parse (parseRoute req) "" (CBS.decode $ BS.unpack path) of
   Right ls -> ls req
   where path = rawPathInfo req
 
+notFoundResponse :: Response
+notFoundResponse = responseLBS status404 [] "Not Found"
+
 notFound :: Request -> IORef a -> IO Response
-notFound _ _ = return $ responseLBS status404 [] "Not Found"
+notFound _ _ = return notFoundResponse
 
 root :: Request -> IORef a -> IO Response
 root _ _ = return $ responseFile status200 [] "./index1.html" Nothing
@@ -99,41 +108,45 @@ parseTask req = do
 indexTask :: Handler
 indexTask req ref = do
   db <- readIORef ref
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "index")
+  return (responseLBS status200 [] $ JSON.encode $ elems $ dbRecords db)
 
 showTask :: Int -> Handler
 showTask taskId req ref = do
   db <- readIORef ref
   let task = M.lookup taskId (dbRecords db)
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show task)
+  if isNothing task then return notFoundResponse else return (responseLBS status200 [] $ JSON.encode task)
 
 addTask :: Request -> IORef DB -> IO Response
 addTask req ref = do
   db <- readIORef ref
+  let nid = dbNextTaskId db
   writeIORef ref $ dbAddTask req db
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "add")
+  let task = M.lookup nid (dbRecords db)
+  return (responseLBS status200 [] $ JSON.encode task)
 --  return (responseLBS status200 [] $ fromStrict $ key `BS.append` "=" `BS.append` (fromJust value) `BS.append` "\n")
 
 updateTask :: Int -> Request -> IORef DB -> IO Response
 updateTask taskId req ref = do
   db <- readIORef ref
   writeIORef ref $ dbUpdateTask taskId req db
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "update")
+  return (responseLBS status204 [] "")
 
 deleteTask :: Int -> Request -> IORef DB -> IO Response
 deleteTask taskId req ref = do
   db <- readIORef ref
   writeIORef ref $ dbDeleteTask taskId db
-  return (responseLBS status200 [] $ toLazyByteString $ stringUtf8 $ show "delete")
+  return (responseLBS status204 [] "")
 
 dbAddTask :: Request -> DB -> DB
 dbAddTask req db = do
   DB{
-    dbRecords = M.insert (dbNextTaskId db) newTask (dbRecords db),
-    dbNextTaskId = dbNextTaskId db + 1
+    dbRecords = M.insert taskId newTask (dbRecords db),
+    dbNextTaskId = taskId + 1
   } where
     reqTask = buildTask req
+    taskId = dbNextTaskId db
     newTask = Task{
+      taskId = taskId,
       taskTitle = taskTitle reqTask,
       taskDescription = taskDescription reqTask
     }
@@ -155,6 +168,7 @@ dbDeleteTask taskId db = do
 buildTask :: Request -> Task
 buildTask req = do
   Task{
+    taskId = 0,
     taskTitle = decodeParameter $ fromJust title,
     taskDescription = decodeParameter $ fromJust desc
   } where
@@ -181,3 +195,5 @@ decodeParameter bs = do
 bs2str :: BS.ByteString -> String
 bs2str str = do
   CBS.decode $ BS.unpack str
+
+deriveJSON defaultOptions { fieldLabelModifier = (\str -> toLower (L.head str) : (L.tail str)) . L.drop (L.length ("task" :: String)) } ''Task
