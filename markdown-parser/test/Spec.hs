@@ -44,3 +44,14 @@ main = hspec $ do
 
     it "return string with linebreak" $ do
       generateHtmlBodyFromMarkdown "foo  \nbar\nbaz" `shouldBe` "<p>foo<br/>bar baz</p>"
+
+    it "return code" $ do
+      generateHtmlBodyFromMarkdown "```\nhoge\nfuga\n```" `shouldBe` "<code>hoge\nfuga</code>"
+
+    it "simple case1" $ do
+      generateHtmlBodyFromMarkdown "## This is title\n\n### This is subtitle\n\nThis is sentence\n\n* foo\n* bar\n* baz\n\nsentence2" `shouldBe` do
+        "<h2>This is title</h2><h3>This is subtitle</h3><p>This is sentence</p><ul><li>foo</li><li>bar</li><li>baz</li></ul><p>sentence2</p>"
+
+    it "simple case2" $ do
+      generateHtmlBodyFromMarkdown "sentence  \nfoo\n\n  \nbar" `shouldBe` do "<p>sentence<br/>foo</p><br/><p>bar</p>"
+

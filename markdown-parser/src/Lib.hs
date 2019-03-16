@@ -11,6 +11,7 @@ import Text.Parsec
 import Text.Parsec.String
 import Text.Parsec.Char
 import Text.Parsec.Token
+import Data.List
 
 -- | generate HTML from Markdown
 --
@@ -41,6 +42,7 @@ data Block = MHead Int String
   | MString String
   | SoftBreak
   | LineBreak
+  | Code String
   deriving Show
 
 parser :: Parser Root
@@ -48,7 +50,7 @@ parser = Root <$> many1 parseBlock
 
 parseBlock :: Parser Block
 parseBlock = do
-  try parseHead <|> try parseList <|> try parseHorizontal <|> try pLineBreakOrBlank <|> try parseParagraph
+  try parseHead <|> try parseList <|> try parseHorizontal <|> try pLineBreakOrBlank <|> try parseCodeBlock <|> try parseParagraph
 
 parseParagraph :: Parser Block
 parseParagraph = Paragraph <$> many1 parseInline <* pSepBlock
@@ -68,6 +70,14 @@ parseList = do
 
 parseHorizontal :: Parser Block
 parseHorizontal = return Horizontal <* string "---"
+
+parseCodeBlock :: Parser Block
+parseCodeBlock = do
+  string "```"
+  newline <|> (many1 (noneOf "\n") *> newline)
+  codes <- many1 $ (notFollowedBy (string "```") *> many1 (noneOf "\n") <* newline)
+  string "```"
+  return (Code $ intercalate "\n" codes)
 
 pSepBlock :: Parser ()
 pSepBlock = try (newline *> newline *> return ()) <|> eof
@@ -97,3 +107,4 @@ generateHtml' Horizontal = "<hr/>"
 generateHtml' (MString s) = s
 generateHtml' SoftBreak = " "
 generateHtml' LineBreak = "<br/>"
+generateHtml' (Code src) = "<code>" ++ src ++ "</code>"
