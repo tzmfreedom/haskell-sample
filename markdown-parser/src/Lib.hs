@@ -43,6 +43,7 @@ data Block = MHead Int String
   | SoftBreak
   | LineBreak
   | Code String
+  | Strong String
   deriving Show
 
 parser :: Parser Root
@@ -56,15 +57,15 @@ parseParagraph :: Parser Block
 parseParagraph = Paragraph <$> many1 parseInline <* pSepBlock
 
 parseInline :: Parser Block
-parseInline = try pLineBreakOrBlank <|> try parseList <|> try parseString <|> try pSoftBreak
+parseInline = try pLineBreakOrBlank <|> try parseList <|> try parseStrong <|> try parseString <|> try pSoftBreak
 
 parseHead :: Parser Block
 parseHead = do
-  MHead <$> (length <$> many1 (char '#') <* spaces) <*> many1 (noneOf "\n") <* (many1 newline <|> eof *> return "")
+  MHead <$> (length <$> many1 (char '#') <* space <* spaces) <*> many1 (noneOf "\n") <* (many1 newline <|> eof *> return "")
 
 parseList :: Parser Block
 parseList = do
-  list <- many1 (char '*' *> spaces *> many1 (noneOf "\n") <* (newline <|> eof *> return ' '))
+  list <- many1 (char '*' *> space *> spaces *> many1 (noneOf "\n") <* (newline <|> eof *> return ' '))
   newline <|> eof *> return ' '
   return (MList list)
 
@@ -78,6 +79,14 @@ parseCodeBlock = do
   codes <- many1 $ (notFollowedBy (string "```") *> many1 (noneOf "\n") <* newline)
   string "```"
   return (Code $ intercalate "\n" codes)
+
+parseStrong :: Parser Block
+parseStrong = do
+  char '*'
+  h <- noneOf "* \n"
+  t <- many (noneOf "*\n")
+  char '*'
+  return (Strong (h:t))
 
 pSepBlock :: Parser ()
 pSepBlock = try (newline *> newline *> return ()) <|> eof
@@ -108,3 +117,4 @@ generateHtml' (MString s) = s
 generateHtml' SoftBreak = " "
 generateHtml' LineBreak = "<br/>"
 generateHtml' (Code src) = "<code>" ++ src ++ "</code>"
+generateHtml' (Strong src) = "<strong>" ++ src ++ "</strong>"

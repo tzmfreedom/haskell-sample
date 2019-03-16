@@ -55,3 +55,8 @@ main = hspec $ do
     it "simple case2" $ do
       generateHtmlBodyFromMarkdown "sentence  \nfoo\n\n  \nbar" `shouldBe` do "<p>sentence<br/>foo</p><br/><p>bar</p>"
 
+    it "strong1" $ do
+      generateHtmlBodyFromMarkdown "*aaa*bbb" `shouldBe` do "<p><strong>aaa</strong>bbb</p>"
+
+    it "strong2" $ do
+      generateHtmlBodyFromMarkdown "*aaa *bbb" `shouldBe` do "<p><strong>aaa </strong>bbb</p>"
