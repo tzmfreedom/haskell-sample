@@ -51,13 +51,13 @@ parser = Root <$> many1 parseBlock
 
 parseBlock :: Parser Block
 parseBlock = do
-  try parseHead <|> try parseList <|> try parseHorizontal <|> try pLineBreakOrBlank <|> try parseCodeBlock <|> try parseParagraph
+  try parseHead <|> try parseList <|> try parseHorizontal <|> try pLineBreak <|> try parseCodeBlock <|> try parseParagraph
 
 parseParagraph :: Parser Block
 parseParagraph = Paragraph <$> many1 parseInline <* pSepBlock
 
 parseInline :: Parser Block
-parseInline = try pLineBreakOrBlank <|> try parseList <|> try parseStrong <|> try parseString <|> try pSoftBreak
+parseInline = try pLineBreak <|> try pBlank <|> try parseList <|> try parseStrong <|> try parseString <|> try pSoftBreak
 
 parseHead :: Parser Block
 parseHead = do
@@ -98,8 +98,11 @@ parseString = do
 pSoftBreak :: Parser Block
 pSoftBreak = newline *> notFollowedBy newline *> return SoftBreak
 
-pLineBreakOrBlank :: Parser Block
-pLineBreakOrBlank = try (count 2 (char ' ') *> newline *> return LineBreak) <|> (MString <$> many1 (char ' '))
+pLineBreak :: Parser Block
+pLineBreak = try (count 2 (char ' ') *> newline *> return LineBreak)
+
+pBlank :: Parser Block
+pBlank = MString <$> many1 (char ' ')
 
 -- generate HTML
 generateHtml :: Root -> String
