@@ -35,12 +35,10 @@ data Root = Root{ blocks :: [Block] }
   deriving Show
 
 data Block = MHead Int String
-  | Paragraph [Inline]
+  | Paragraph [Block]
   | MList [String]
   | Horizontal
-  deriving Show
-
-data Inline = MString String
+  | MString String
   | SoftBreak
   | LineBreak
   deriving Show
@@ -50,13 +48,13 @@ parser = Root <$> many1 parseBlock
 
 parseBlock :: Parser Block
 parseBlock = do
-  try parseHead <|> try parseList <|> try parseHorizontal <|> try parseParagraph
+  try parseHead <|> try parseList <|> try parseHorizontal <|> try pLineBreakOrBlank <|> try parseParagraph
 
 parseParagraph :: Parser Block
 parseParagraph = Paragraph <$> many1 parseInline <* pSepBlock
 
-parseInline :: Parser Inline
-parseInline = try pLineBreakOrBlank <|> try parseString <|> try pSoftBreak
+parseInline :: Parser Block
+parseInline = try pLineBreakOrBlank <|> try parseList <|> try parseString <|> try pSoftBreak
 
 parseHead :: Parser Block
 parseHead = do
@@ -74,14 +72,14 @@ parseHorizontal = return Horizontal <* string "---"
 pSepBlock :: Parser ()
 pSepBlock = try (newline *> newline *> return ()) <|> eof
 
-parseString :: Parser Inline
+parseString :: Parser Block
 parseString = do
   MString <$> many1 (noneOf " \n")
 
-pSoftBreak :: Parser Inline
+pSoftBreak :: Parser Block
 pSoftBreak = newline *> notFollowedBy newline *> return SoftBreak
 
-pLineBreakOrBlank :: Parser Inline
+pLineBreakOrBlank :: Parser Block
 pLineBreakOrBlank = try (count 2 (char ' ') *> newline *> return LineBreak) <|> (MString <$> many1 (char ' '))
 
 -- generate HTML
@@ -94,10 +92,8 @@ generateHtmlBody Root{blocks=blocks} = foldl (\x y -> x ++ generateHtml' y ) "" 
 generateHtml' :: Block -> String
 generateHtml' (MHead x y) = "<" ++ tagName ++ ">" ++ y ++ "</" ++ tagName ++ ">" where tagName = 'h':show x
 generateHtml' (MList inlines) = "<ul>" ++ foldl (\x y -> x ++ "<li>" ++ y ++ "</li>") "" inlines ++ "</ul>"
-generateHtml' (Paragraph inlines) = "<p>" ++ foldl (\x y -> x ++ generateHtml'' y) "" inlines ++ "</p>"
+generateHtml' (Paragraph inlines) = "<p>" ++ foldl (\x y -> x ++ generateHtml' y) "" inlines ++ "</p>"
 generateHtml' Horizontal = "<hr/>"
-
-generateHtml'' :: Inline -> String
-generateHtml'' (MString s) = s
-generateHtml'' SoftBreak = " "
-generateHtml'' LineBreak = "<br/>"
+generateHtml' (MString s) = s
+generateHtml' SoftBreak = " "
+generateHtml' LineBreak = "<br/>"
