@@ -52,7 +52,7 @@ parseQuery = do
   spaces
   object <- parseSObject
   spaces
-  whereClause <- ((string "WHERE" <|> string "where") *> spaces *> parseWhereClause <|> return Nothing)
+  whereClause <- parseWhereClause
   return (SOQL{..})
 
 parseSelectFields :: Parser [SOQLField]
@@ -70,12 +70,33 @@ parseIdentifier = many1 (noneOf " ,():=!")
 
 parseWhereClause :: Parser (Maybe WhereExpression)
 parseWhereClause = do
-  field <- spaces *> parseIdentifier <* spaces
+  (string "WHERE" <|> string "where")
+  spaces
+  condition <- parseCondition
+  return (Just condition)
+  <|> return Nothing
+
+parseCondition :: Parser WhereExpression
+parseCondition = do
+  left <- parseSingleCondition
+  parseMultipleCondition left <|> return left
+
+parseMultipleCondition :: WhereExpression -> Parser WhereExpression
+parseMultipleCondition left = do
+  operator <- string "AND" <|> string "OR"
+  spaces
+  right <- parseCondition
+  return (MultipleCondition left operator right)
+
+parseSingleCondition :: Parser WhereExpression
+parseSingleCondition = do
+  field <- parseIdentifier
+  spaces
   operator <- (try $ string "!=") <|> (try $ string ">=") <|> (try $ string "<=") <|> string "=" <|> string "<" <|> string ">"
   spaces
   expression <- parseExpression
   spaces
-  return (Just (SingleCondition (Field field) operator expression))
+  return (SingleCondition (Field field) operator expression)
 
 parseExpression :: Parser Expression
 parseExpression = do

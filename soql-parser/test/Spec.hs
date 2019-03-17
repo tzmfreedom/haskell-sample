@@ -44,3 +44,31 @@ main = hspec $ do
       it "not equal bool, false" $ do
         parseSOQL "SELECT Id FROM Account WHERE Name != false" `shouldBe` do
           SOQL{fields=[Field "Id"], object=SObject "Account", whereClause=Just (SingleCondition (Field "Name") "!=" (SOQLBool False))}
+
+    describe "multiple condition" $ do
+      it "A AND B" $ do
+        parseSOQL "SELECT Id FROM Account WHERE Id = 1 AND Name = 2" `shouldBe` do
+          SOQL{fields=[Field "Id"], object=SObject "Account", whereClause=Just (MultipleCondition
+            (SingleCondition (Field "Id") "=" (SOQLInt 1))
+            "AND"
+            (SingleCondition (Field "Name") "=" (SOQLInt 2))
+            )}
+
+      it "A OR B" $ do
+        parseSOQL "SELECT Id FROM Account WHERE Id = 1 OR Name = 2" `shouldBe` do
+          SOQL{fields=[Field "Id"], object=SObject "Account", whereClause=Just (MultipleCondition
+            (SingleCondition (Field "Id") "=" (SOQLInt 1))
+            "OR"
+            (SingleCondition (Field "Name") "=" (SOQLInt 2))
+            )}
+
+      it "A AND B OR C" $ do
+        parseSOQL "SELECT Id FROM Account WHERE Id = 1 AND Name = 2 OR Foo = 3" `shouldBe` do
+          SOQL{fields=[Field "Id"], object=SObject "Account", whereClause=Just (MultipleCondition
+            (SingleCondition (Field "Id") "=" (SOQLInt 1))
+            "AND"
+            (MultipleCondition
+              (SingleCondition (Field "Name") "=" (SOQLInt 2))
+              "OR"
+              (SingleCondition (Field "Foo") "=" (SOQLInt 3))
+              ))}
