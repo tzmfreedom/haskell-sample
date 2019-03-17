@@ -49,6 +49,10 @@ main = hspec $ do
       parseSOQL "SELECT NOW(), SUM(Amount) FROM Account GROUP BY Name" `shouldBe` do
         SOQL{soqlFields=[Function "NOW" [], Function "SUM" [Field "Amount"]], soqlObject=SObject "Account", soqlWhereClause=Nothing, soqlGroupByClause=Just [Field "Name"], soqlHavingClause=Nothing}
 
+    it "having" $ do
+      parseSOQL "SELECT COUNT() FROM Account GROUP BY Name HAVING Foo = 'bar'" `shouldBe` do
+        SOQL{soqlFields=[Function "COUNT" []], soqlObject=SObject "Account", soqlWhereClause=Nothing, soqlGroupByClause=Just [Field "Name"], soqlHavingClause=Just (SingleCondition (Field "Foo") "=" (SOQLString "bar"))}
+
     describe "multiple condition" $ do
       it "A AND B" $ do
         parseSOQL "SELECT Id FROM Account WHERE Id = 1 AND Name = 2" `shouldBe` do
