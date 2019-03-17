@@ -22,10 +22,14 @@ import Data.Maybe
 data SOQL = SOQL{
   soqlFields :: [SOQLField],
   soqlObject :: SObject,
-  soqlWhereClause :: Maybe WhereExpression
+  soqlWhereClause :: Maybe WhereExpression,
+  soqlGroupByClause :: Maybe [SOQLField],
+  soqlHavingClause :: Maybe WhereExpression
 } deriving (Show, Eq)
 
-data SOQLField = Field String | SubQuery SOQL
+data SOQLField = Field String
+  | Function String [SOQLField]
+  | SubQuery SOQL
   deriving (Show, Eq)
 
 data SObject = SObject String
@@ -62,14 +66,33 @@ parseQuery = do
   soqlObject <- parseSObject
   spaces
   soqlWhereClause <- parseWhereClause
+  spaces
+  soqlGroupByClause <- parseGroupByClause
+  spaces
+  soqlHavingClause <- parseHavingClause
   return (SOQL{..})
 
 parseSelectFields :: Parser [SOQLField]
 parseSelectFields = parseSelectField `sepBy` (char ',')
 
 parseSelectField :: Parser SOQLField
-parseSelectField = (Field <$> try (spaces *> parseIdentifier <* spaces)) <|>
-  (SubQuery <$> try (spaces *> char '(' *> parseQuery <* char ')' <* spaces))
+parseSelectField =  try parseFunction <|> try parseField <|> try parseSubQuery
+
+parseField :: Parser SOQLField
+parseField = Field <$> (spaces *> parseIdentifier <* spaces)
+
+parseFunction :: Parser SOQLField
+parseFunction = do
+  spaces
+  funcName <- parseIdentifier
+  char '('
+  fields <- parseField `sepBy` (char ',')
+  char ')'
+  spaces
+  return (Function funcName fields)
+
+parseSubQuery :: Parser SOQLField
+parseSubQuery = SubQuery <$> (spaces *> char '(' *> parseQuery <* char ')' <* spaces)
 
 parseSObject :: Parser SObject
 parseSObject = SObject <$> parseIdentifier
@@ -79,7 +102,24 @@ parseIdentifier = many1 (noneOf " ,():=!")
 
 parseWhereClause :: Parser (Maybe WhereExpression)
 parseWhereClause = do
-  (string "WHERE" <|> string "where")
+  string "WHERE" <|> string "where"
+  spaces
+  condition <- parseCondition
+  return (Just condition)
+  <|> return Nothing
+
+parseGroupByClause :: Parser (Maybe [SOQLField])
+parseGroupByClause = do
+   string "GROUP" <|> string "group"
+   spaces
+   string "BY" <|> string "by"
+   spaces
+   Just <$> (parseField `sepBy` (char ','))
+   <|> return Nothing
+
+parseHavingClause :: Parser (Maybe WhereExpression)
+parseHavingClause = do
+  (string "HAVING" <|> string "having")
   spaces
   condition <- parseCondition
   return (Just condition)
