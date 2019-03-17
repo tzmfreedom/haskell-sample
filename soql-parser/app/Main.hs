@@ -1,7 +1,7 @@
 module Main where
 
 import System.Environment
-import Lib
+import SOQL
 
 main :: IO ()
 main = do

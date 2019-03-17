@@ -1,7 +1,16 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Lib where
+module SOQL (
+    parseSOQL,
+    parseSOQLTest,
+    generateSOQL,
+    SOQL(..),
+    SOQLField(..),
+    SObject(..),
+    WhereExpression(..),
+    Expression(..)
+) where
 
 import Text.Parsec
 import Text.Parsec.String
@@ -11,9 +20,9 @@ import Data.List
 import Data.Maybe
 
 data SOQL = SOQL{
-  fields :: [SOQLField],
-  object :: SObject,
-  whereClause :: Maybe WhereExpression
+  soqlFields :: [SOQLField],
+  soqlObject :: SObject,
+  soqlWhereClause :: Maybe WhereExpression
 } deriving (Show, Eq)
 
 data SOQLField = Field String | SubQuery SOQL
@@ -46,13 +55,13 @@ parseQuery = do
   spaces
   string "SELECT" <|> string "select"
   spaces
-  fields <- parseSelectFields
+  soqlFields <- parseSelectFields
   spaces
   string "FROM" <|> string "from"
   spaces
-  object <- parseSObject
+  soqlObject <- parseSObject
   spaces
-  whereClause <- parseWhereClause
+  soqlWhereClause <- parseWhereClause
   return (SOQL{..})
 
 parseSelectFields :: Parser [SOQLField]
@@ -120,4 +129,33 @@ parseInt = do
     h <- oneOf ['1'..'9']
     t <- many digit
     return (SOQLInt $ -(read (h:t) :: Int))
+
+generateSOQL :: SOQL -> String
+generateSOQL SOQL{..} = do
+  "SELECT " ++ expandFields soqlFields ++ " FROM " ++ expandSObject soqlObject ++ expandWhereClause soqlWhereClause
+
+expandFields :: [SOQLField] -> String
+expandFields (f:fs) = foldl (\x y -> x ++ ", " ++ expandField y) (expandField f) fs
+
+expandField :: SOQLField -> String
+expandField (Field f) = f
+expandField (SubQuery s) = "(" ++ generateSOQL s ++ ")"
+
+expandSObject :: SObject -> String
+expandSObject (SObject s) = s
+
+expandWhereClause :: Maybe WhereExpression -> String
+expandWhereClause Nothing = ""
+expandWhereClause (Just x) = " WHERE " ++ expandWhereExpression x
+
+expandWhereExpression :: WhereExpression -> String
+expandWhereExpression (SingleCondition (Field f) op exp) = f ++ " " ++ op ++ " " ++ expandExpression exp
+expandWhereExpression (MultipleCondition left op right) = expandWhereExpression left ++ " " ++ op ++ " " ++ expandWhereExpression right
+
+expandExpression :: Expression -> String
+expandExpression (SOQLInt i) = show i
+expandExpression (SOQLString s) = '\'':s ++ "'"
+expandExpression (SOQLFloat f) = show f
+expandExpression (SOQLBool True) = "true"
+expandExpression (SOQLBool False) =  "false"
 
