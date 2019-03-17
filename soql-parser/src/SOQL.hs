@@ -16,6 +16,7 @@ import Text.Parsec
 import Text.Parsec.String
 import Text.Parsec.Char
 import Text.Parsec.Token
+import Data.Char
 import Data.List
 import Data.Maybe
 
@@ -57,11 +58,11 @@ parseSOQLTest = parseTest parseQuery
 parseQuery :: Parser SOQL
 parseQuery = do
   spaces
-  string "SELECT" <|> string "select"
+  caseIgnoredString "select"
   spaces
   soqlFields <- parseSelectFields
   spaces
-  string "FROM" <|> string "from"
+  caseIgnoredString "from"
   spaces
   soqlObject <- parseSObject
   spaces
@@ -102,7 +103,7 @@ parseIdentifier = many1 (noneOf " ,():=!")
 
 parseWhereClause :: Parser (Maybe WhereExpression)
 parseWhereClause = do
-  string "WHERE" <|> string "where"
+  caseIgnoredString "where"
   spaces
   condition <- parseCondition
   return (Just condition)
@@ -110,16 +111,16 @@ parseWhereClause = do
 
 parseGroupByClause :: Parser (Maybe [SOQLField])
 parseGroupByClause = do
-   string "GROUP" <|> string "group"
+   caseIgnoredString "group"
    spaces
-   string "BY" <|> string "by"
+   caseIgnoredString "by"
    spaces
    Just <$> (parseField `sepBy` (char ','))
    <|> return Nothing
 
 parseHavingClause :: Parser (Maybe WhereExpression)
 parseHavingClause = do
-  (string "HAVING" <|> string "having")
+  caseIgnoredString "having"
   spaces
   condition <- parseCondition
   return (Just condition)
@@ -132,7 +133,7 @@ parseCondition = do
 
 parseMultipleCondition :: WhereExpression -> Parser WhereExpression
 parseMultipleCondition left = do
-  operator <- string "AND" <|> string "OR"
+  operator <- caseIgnoredString "and" <|> caseIgnoredString "or"
   spaces
   right <- parseCondition
   return (MultipleCondition left operator right)
@@ -156,7 +157,7 @@ parseString = SOQLString <$> (char '\'' *> many (noneOf "'") <*  char '\'')
 
 parseBool :: Parser Expression
 parseBool = do
-  (SOQLBool <$> return True <* (string "true" <|> string "TRUE")) <|> (SOQLBool <$> return False <* (string "false" <|> string "FALSE"))
+  (SOQLBool <$> return True <* caseIgnoredString "true") <|> (SOQLBool <$> return False <* caseIgnoredString "false")
 
 parseInt :: Parser Expression
 parseInt = do
@@ -199,3 +200,6 @@ expandExpression (SOQLFloat f) = show f
 expandExpression (SOQLBool True) = "true"
 expandExpression (SOQLBool False) =  "false"
 
+caseIgnoredString :: String -> Parser String
+caseIgnoredString str = do
+  (string $ map toUpper str) <|> (string $ map toLower str)
