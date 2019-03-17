@@ -201,5 +201,8 @@ expandExpression (SOQLBool True) = "true"
 expandExpression (SOQLBool False) =  "false"
 
 caseIgnoredString :: String -> Parser String
-caseIgnoredString str = do
-  (string $ map toUpper str) <|> (string $ map toLower str)
+caseIgnoredString s = mapM caseIgnoredChar s <?> "\"" ++ s ++ "\""
+
+caseIgnoredChar :: Char -> Parser Char
+caseIgnoredChar c = do
+  (char $ toUpper c) <|> (char $ toLower c)
