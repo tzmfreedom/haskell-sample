@@ -24,6 +24,13 @@ dependencies:
 - directory
 - unix
 - mtl
+- list-t
+- cmark
+- text
+- filepath
+- parsec
+- yaml
+- aeson
 
 library:
   source-dirs: src

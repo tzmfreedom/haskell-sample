@@ -1,6 +1,9 @@
 module Lib
-    ( someFunc
+    ( firstLower
     ) where
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+import Data.Char
+
+firstLower :: String -> String
+firstLower [] = []
+firstLower (x:xs) = toLower x:xs
