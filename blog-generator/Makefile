@@ -5,3 +5,7 @@ build:
 .PHONY: test
 test:
 	stack test
+
+.PHONY: install
+install:
+	stack install

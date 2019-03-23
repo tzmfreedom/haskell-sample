@@ -31,12 +31,13 @@ dependencies:
 - parsec
 - yaml
 - aeson
+- time
 
 library:
   source-dirs: src
 
 executables:
-  blog-generator-exe:
+  blog-gen:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
