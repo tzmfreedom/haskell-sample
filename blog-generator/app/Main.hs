@@ -32,7 +32,7 @@ data Meta = Meta{
   metaDescription :: String,
   metaKeywords :: [String],
   metaSrc :: String,
-  metaCreatedAt :: String
+  metaPublishedAt :: String
 } deriving Show
 
 main :: IO ()
@@ -41,6 +41,7 @@ main = do
   case if L.length(args) == 0 then "generate" else args !! 0 of
     "generate" -> generate
     "index" -> generateIndex
+    "static" -> generateStatic
     "new" -> newBlog args
     otherwise -> print $ "No such subcommand" ++ args !! 0
   return ()
@@ -58,6 +59,29 @@ generateIndex = do
   files <- findAllSource
   meta <- getMetaInfo files
   writeFile "dest/index.html" =<< renderIndex meta
+
+generateStatic :: IO ()
+generateStatic = processStatic ""
+
+processStatic :: String -> IO ()
+processStatic dir = do
+  let dir' = (staticDirectory ++ "/" ++ dir)
+  files <- listDirectory dir'
+  mapM (generateStaticFile dir) files
+  return ()
+
+generateStaticFile :: FilePath -> FilePath -> IO ()
+generateStaticFile dir f = do
+  let src = if dir == "" then staticDirectory ++ "/" ++ f else staticDirectory ++ "/" ++ dir ++ "/" ++ f
+  exist <- doesDirectoryExist src
+  if exist then do
+    let destDirectory = "dest" ++ L.drop (L.length staticDirectory) src
+    exist <- doesDirectoryExist destDirectory
+    if exist then return () else createDirectory destDirectory
+    processStatic f
+  else do
+    copyFile src $ "dest/" ++ L.drop (L.length staticDirectory) src
+  return ()
 
 newBlog :: [String] -> IO ()
 newBlog args = do
@@ -81,6 +105,9 @@ metaDirectory = "meta"
 
 layoutFile :: String
 layoutFile = "layout.html"
+
+staticDirectory :: String
+staticDirectory = "static"
 
 lastUpdated :: IO String
 lastUpdated = readFile lastUpdatedFile
@@ -126,10 +153,11 @@ getMetaInfo:: [FilePath] -> IO [Meta]
 getMetaInfo files = do
   (flip mapM) files $ \f -> do
     meta <- decodeFileEither $ metaFile f
-    return $ getMeta meta
+    return $ getMeta meta f
 
-getMeta :: Either a Meta -> Meta
-getMeta (Right a) = a
+getMeta :: Either a Meta -> FilePath -> Meta
+getMeta (Right a) _ = a
+getMeta (Left err) f = error f
 
 metaFile :: FilePath -> String
 metaFile f = metaDirectory ++ "/" ++ (Prelude.drop (Prelude.length srcDirectory) (replaceExtension f ".yml"))
@@ -153,7 +181,7 @@ parser src meta = do
     try (string "{{" *> spaces *> string "body" *> spaces *> string "}}" *> return src) <|>
     try (string "{{" *> spaces *> string "meta" *> spaces *> string "}}" *> return (renderMeta meta)) <|>
     try (string "{{" *> spaces *> string "title" *> spaces *> string "}}" *> return ("<h1>" ++ metaTitle meta ++ "</h1>")) <|>
-    try (string "{{" *> spaces *> string "createdAt" *> spaces *> string "}}" *> return (metaCreatedAt meta)) <|>
+    try (string "{{" *> spaces *> string "publishedAt" *> spaces *> string "}}" *> return (metaPublishedAt meta)) <|>
     (anyChar >>= (\c -> return [c]))
     )
   return $ Prelude.concat ls
@@ -177,12 +205,15 @@ renderIndex metaInfo = do
     p :: Parser String
     p = do
       parts <- many (
-        try (string "{{" *> spaces *> string "body" *> spaces *> string "}}" *> return lst) <|>
+        try (string "{{" *> spaces *> string "body" *> spaces *> string "}}" *> return ("<ul>" ++ lst ++ "</ul>")) <|>
         (anyChar >>= (\c -> return [c]))
         )
       return $ Prelude.concat parts
-    lst = L.foldl (\x m -> x ++ "<li>" ++ metaCreatedAt m ++ ": <a href=\"/" ++ metaToPath m ++ "\">" ++ metaTitle m ++ "</a></li>") "" sorted
-    sorted = sortWith (\m -> metaCreatedAt m) metaInfo
+    lst = L.foldl (\x m -> x ++ "<li>" ++ metaPublishedAt m ++ ": <a href=\"/" ++ metaToPath m ++ "\">" ++ metaTitle m ++ "</a></li>") "" sorted
+    sorted = sortWithDesc (\m -> metaPublishedAt m) metaInfo
+
+sortWithDesc :: Ord b => (a -> b) -> [a] -> [a]
+sortWithDesc f = sortBy (\x y -> compare (f y) (f x))
 
 metaToPath :: Meta -> String
 metaToPath meta = replaceExtension (takeFileName $ metaSrc meta) ".html"
