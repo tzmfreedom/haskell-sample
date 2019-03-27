@@ -25,6 +25,7 @@ import Data.Aeson.TH (deriveJSON, defaultOptions, Options(..))
 import Data.List as L
 import Data.Time.Format
 import GHC.Exts
+import Debug.Trace
 import Lib
 
 data Meta = Meta{
@@ -42,6 +43,7 @@ main = do
     "generate" -> generate
     "index" -> generateIndex
     "static" -> generateStatic
+    "rss" -> generateRSS
     "new" -> newBlog args
     otherwise -> print $ "No such subcommand" ++ args !! 0
   return ()
@@ -62,6 +64,13 @@ generateIndex = do
 
 generateStatic :: IO ()
 generateStatic = processStatic ""
+
+generateRSS :: IO ()
+generateRSS = do
+  files <- findAllSource
+  meta <- getMetaInfo files
+  content <- renderRSS meta
+  writeFile (destDirectory ++ "/feed.xml") content
 
 processStatic :: String -> IO ()
 processStatic dir = do
@@ -108,6 +117,9 @@ layoutFile = "layout.html"
 
 staticDirectory :: String
 staticDirectory = "static"
+
+destDirectory :: String
+destDirectory = "dest"
 
 lastUpdated :: IO String
 lastUpdated = readFile lastUpdatedFile
@@ -211,6 +223,91 @@ renderIndex metaInfo = do
       return $ Prelude.concat parts
     lst = L.foldl (\x m -> x ++ "<li>" ++ metaPublishedAt m ++ ": <a href=\"/" ++ metaToPath m ++ "\">" ++ metaTitle m ++ "</a></li>") "" sorted
     sorted = sortWithDesc (\m -> metaPublishedAt m) metaInfo
+
+renderRSS :: [Meta] -> IO String
+renderRSS metaInfo = do
+  layout <- readFile "rss-layout.xml"
+  case parse p "" layout of
+    Left err -> error "ParseError"
+    Right xml -> return xml
+  where
+    p :: Parser String
+    p = do
+      parts <- many (
+        try (string "{{" *> spaces *> string "site_name" *> spaces *> string "}}" *> return "") <|>
+        try (string "{{" *> spaces *> string "description" *> spaces *> string "}}" *> return "") <|>
+        try (string "{{" *> spaces *> string "feed_update_period" *> spaces *> string "}}" *> return "") <|>
+        try (string "{{" *> spaces *> string "feed_update_frequency" *> spaces *> string "}}" *> return "") <|>
+        try (string "{{" *> spaces *> string "site_url" *> spaces *> string "}}" *> return "") <|>
+        try (string "{{" *> spaces *> string "feed_path" *> spaces *> string "}}" *> return "") <|>
+        try (string "{{" *> spaces *> string "pub_date" *> spaces *> string "}}" *> return "") <|>
+        try (parseItemsBlock sorted) <|>
+        (anyChar >>= (\c -> return [c]))
+        )
+      return $ Prelude.concat parts
+    sorted :: [Meta]
+    sorted = sortWithDesc (\m -> metaPublishedAt m) metaInfo
+
+parseItemsBlock :: [Meta] -> Parser String
+parseItemsBlock metaInfo = do
+  try (string "{%" *> spaces *> string "items" *> spaces *> string "%}")
+  let end = (string "{%" *> spaces *> string "end_items" *> spaces *> string "%}")
+  parts <- many (notFollowedBy end *> anyChar >>= (\c -> return [c]))
+  end
+  renderItems (Prelude.concat parts) metaInfo
+
+data ItemNode = NVar String
+  | NText String
+  deriving Show
+
+renderItems :: String -> [Meta] -> Parser String
+renderItems layout metaInfo = do
+  case parse p "" layout of
+    Left err -> error "ParseError"
+    Right itemNodes -> return $ renderItemsByNode itemNodes (L.take 5 metaInfo)
+  where
+    p :: Parser [ItemNode]
+    p = do
+      many (
+        try parseTextNode <|>
+        try parseVarNode
+        )
+    sorted = sortWithDesc (\m -> metaPublishedAt m) metaInfo
+
+renderItemsByNode :: [ItemNode] -> [Meta] -> String
+renderItemsByNode items metaInfo = do
+  L.foldl (\x y -> x ++ renderItemByNode items y) "" metaInfo
+
+renderItemByNode :: [ItemNode] -> Meta -> String
+renderItemByNode items meta = do
+  L.foldl (\x y -> x ++ renderNode y meta) "" items
+
+renderNode :: ItemNode -> Meta -> String
+renderNode (NVar str) m = do
+  case str of
+    "post_title" -> metaTitle m
+    "post_content" -> metaDescription m
+    "post_date" -> metaPublishedAt m
+    "site_url" -> "https://blog.freedom-man.com"
+    "post_url" -> L.drop (L.length srcDirectory) $ metaSrc m
+    _ -> "foobar"
+renderNode (NText str) _ = str
+
+parseTextNode :: Parser ItemNode
+parseTextNode = do
+  lookAhead (noneOf "{")
+  chars <- manyTill anyChar ((lookAhead $ string "{{") <|> (eof *> return ""))
+  return $ NText chars
+--  NText <$> (many (notFollowedBy parseVarNode *> anyChar)) -- noneOf "{"))
+
+parseVarNode :: Parser ItemNode
+parseVarNode = do
+  string "{{"
+  spaces
+  var <- many (noneOf " ")
+  spaces
+  string "}}"
+  return $ NVar var
 
 sortWithDesc :: Ord b => (a -> b) -> [a] -> [a]
 sortWithDesc f = sortBy (\x y -> compare (f y) (f x))
